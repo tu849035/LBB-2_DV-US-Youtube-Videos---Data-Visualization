@@ -1,0 +1,277 @@
+---
+title: "US Youtube Videos - Data Visualization"
+author: "Tubagus Fathul Arifin"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 5
+    toc_float: true
+    theme: readable
+    highlight: breezedark
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(lubridate)
+```
+```{r echo=FALSE, out.width="100%"}
+knitr::include_graphics("assets/logo-youtube-new-youtube.comcopy.jpg")
+
+```
+
+# **1. DATA INTRODUCTION**
+
+As a *"YouTuber"* in America who wants to increase the prestige of his YouTube channel, we plan to create trending video content! We just got data on *"YouTube's US Trending Videos"* and want to find out **what characteristics make a video trending**?
+
+*"YouTube US Trending Videos"* is a collection of 200 trending videos in the US per day from 2017-11-14 to 2018-01-21.
+
+# **2. DATA PREPARATION**
+
+Input the data and store it in a variable named **Videos**
+```{r}
+Videos <- read.csv("data_input/USvideos.csv")
+```
+And now we can do data inspection and cleansing`
+
+## **2.1. Data Inspection**
+
+Check if the saved data is correct
+```{r}
+head(Videos)
+```
+Inspect the data.
+```{r}
+str(Videos)
+```
+```{r}
+dim(Videos)
+```
+```{r}
+names(Videos)
+```
+**From our inspection we can conclude** :   
+  * Retail data contain 13400 of rows and 13 of coloumns.  
+  * Each of column name :  
+    01. “trending_date”,  
+    02. “title”,  
+    03. “channel_title”,  
+    04. “category_id”,  
+    05. “publish_time”,  
+    06. “views”,  
+    07. “likes”,  
+    08. “dislikes”,  
+    09. “comment_count”,  
+    10. “comments_disabled”,  
+    11. “ratings_disabled”,  
+    12. “video_error_or_removed”,  
+
+## **2.2. Data Cleansing & Coertions**
+
+From the **`str()`** result, we find some of data type not in the corect type. we need to convert it into corect type (data coertion).
+```{r}
+Videos$trending_date <- ydm(Videos$trending_date)
+Videos$publish_time <- ymd_hms(Videos$publish_time, tz = "America/New_York")
+Videos$category_id <- sapply(X = as.character(Videos$category_id), 
+                           FUN = switch, 
+                           "1" = "Film and Animation",
+                           "2" = "Autos and Vehicles", 
+                           "10" = "Music", 
+                           "15" = "Pets and Animals", 
+                           "17" = "Sports",
+                           "19" = "Travel and Events", 
+                           "20" = "Gaming", 
+                           "22" = "People and Blogs", 
+                           "23" = "Comedy",
+                           "24" = "Entertainment", 
+                           "25" = "News and Politics",
+                           "26" = "Howto and Style", 
+                           "27" = "Education",
+                           "28" = "Science and Technology", 
+                           "29" = "Nonprofit and Activism",
+                           "43" = "Shows")
+str(Videos)
+```
+```{r}
+head(Videos)
+```
+Each of column already changed into desired data type
+
+Now, we have to check for the missing value in the data.
+```{r}
+colSums(is.na(Videos))
+```
+```{r}
+anyNA(Videos)
+```
+From the result above, now we know that there are no missing value in the `Videos` data.
+
+We will do subsetting to delete some column (10, 11, & 12 because we dont need the informations). then save it into `Videos_new` variable.
+```{r}
+Videos_new <- Videos[,c(1:9)]
+head(Videos_new)
+```
+
+## **2.2. Data Feature Engineering**
+
+Extract the day name information from the `trending_date` column and create a new column named `trending_day`.
+```{r}
+Videos_new$trending_day <- (wday(Videos_new$trending_date, 
+     label = T,
+     abbr = T))
+head(Videos_new)
+```
+
+Extract the hour information from the `publish_time` column and create a new column named `publish_hour`.
+```{r}
+Videos_new$publish_hour <- hour(Videos_new$publish_time)
+head(Videos_new)
+```
+
+Create a `publish_when` column by dividing `publish_hour` into periods (Day-Night).
+```{r}
+Videos_new$publish_when <- ifelse(test = Videos_new$publish_hour > 12, yes = "Night", no = "Day")
+head(Videos_new)
+```
+
+Extract the day name information from the `publish_time` column and create a new column named `publish_day`.
+```{r}
+Videos_new$publish_day <- wday(x=Videos_new$publish_time, label=T, abbr = T)
+head(Videos_new)
+```
+
+# **3. DATA EXPLORATION & VISUALIZATION**
+
+In the `Videos_new` data there is data redundancy, namely there are videos that appear several times because they are trending for more than 1 day.
+
+For further analysis, **we will only use data when the video is first trending8* in order to reduce data redundancy.
+```{r}
+index.Videos_new <- match(unique(Videos_new$title), Videos_new$title)
+Videos_new <- Videos_new[index.Videos_new,]
+head(Videos_new)
+```
+
+## **3.1. Likes & Comments per Views for Top 4 Category **
+
+We will look for 4 categories of videos with the most views. by aggregating the `category_id` & `views` columns.
+```{r}
+category_views <- aggregate(views~category_id,Videos_new,sum)
+head(category_views[order(category_views$views, decreasing = T),],4)
+```
+Based on these top 4 video categories, we will do further analysis.
+
+subset the `Videos_new` data for the top 4 categories and save it to the `Videos_top_4` object.
+```{r}
+Videos_top_4 <- Videos_new[Videos_new$category_id %in% c("Entertainment", "Music", "Comedy", "Howto and Style"), ]
+```
+create `likesp` column containing likes/views and `dislikesp` containing dislikes/views
+```{r}
+Videos_top_4$likesp <- Videos_top_4$likes/Videos_top_4$views
+Videos_top_4$commentp <- Videos_top_4$comment_count /Videos_top_4$views
+head(Videos_new)
+```
+see the distribution of likes/views and dislikes/views per category
+```{r}
+ ggplot(data = Videos_top_4 , mapping = aes(x = category_id , y = likesp )) +
+geom_boxplot(outlier.shape = NA, fill = "black" , col = "blue", alpha = 0.5 ) +
+geom_jitter( (aes(size=commentp)) , col="green", 
+alpha = 0.2) +
+  labs(title = "Likes and Comment character trending in youtube",  
+subtitle = "Entertainment, Music, Comedy, Howto and Style" , 
+x =NULL ,
+y = "likes per view" ,
+size = "Comment per view",
+caption = "Source: Youtube" ) +
+theme_minimal()
+```
+
+## **3.2. More than equal to 10 Channel **
+
+We are also planning to collaborate with a YouTube channel that often appears in trending video searches!  
+We will look for YouTube channels that have **more than equal to 10 trending videos**. So that it can be determined which YouTube channel is good to be a collaboration partner.  
+
+Count the video frequency of each channel
+```{r}
+Videos_10chan <- as.data.frame(table(Videos_new$channel_title))
+colnames(Videos_10chan) <- c("Title", "Freq")
+```
+Perform filtering for channels that have a frequency >= 10.
+```{r}
+Videos_10chan <- Videos_10chan[Videos_10chan$Freq >= 10 , ]
+head(Videos_10chan, 10)
+```
+Sort from highest to lowest frequency and grab top 10 data from `Videos_10chan`
+```{r}
+Videos_10chan <- head(Videos_10chan[order(Videos_10chan$Freq, decreasing=T), ], 10)
+```
+Visualization.
+```{r}
+ggplot(data = Videos_10chan[1:10,], mapping = aes(x=  Freq, y= reorder(Title,Freq))) +
+  geom_col(aes(fill = Freq))  + 
+  labs(
+    title = "Top 10 Trending Channel Youtube",
+    x = "Video Count",
+    y = "Channel Title",
+    caption = "Source: Youtube"
+  ) +
+  scale_fill_gradient(low = "purple", high = "green") +   geom_label(mapping = aes(label = Freq), 
+            col = "blue",
+            nudge_x = -1) + 
+  theme_minimal() +
+  theme(legend.position = "none")+   geom_vline(xintercept=mean(Videos_10chan$Freq), col="white")+ 
+  scale_x_continuous(breaks=seq(0,35,5))
+```
+
+
+## **3.3. Categories with Highest Trending Videos**
+
+We will find out which category has the highest number of videos and want to know the proportion of each time period (Day/Night) when the video is published a lot.
+```{r}
+Videos_DayNight <- as.data.frame(table(Videos_new$category_id, Videos_new$publish_when))         
+head(Videos_DayNight)
+```
+Visualization.
+```{r}
+ggplot(data = Videos_DayNight, mapping = aes(x = Freq, y = reorder(Var1, Freq))) +
+  geom_col(mapping = aes(fill = Var2), position = "stack") +
+  labs(x = "Video Count", y = NULL,
+       fill = NULL,
+       title = "Categories with Highest Trending Videos",
+       subtitle = "Colored per Publish Hour") +
+  scale_fill_brewer(palette = "Set1") +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+## **3.4. Publish Time & Views**
+
+We will Visualize the trend of **average viewers** per `publish_hour` for the top 4 categories.
+```{r}
+Videos_TimeViews <- aggregate(views ~ category_id + publish_hour,
+                       data = Videos_top_4,
+                       FUN = mean)
+```
+Visualization.
+```{r}
+ggplot(data = Videos_TimeViews, mapping = aes(x = publish_hour, y = views)) +
+  geom_line(aes(group = category_id,
+                col = category_id)) +
+  labs(x = "Publish Hour", y = "Views",
+       fill = NULL,
+       title = "Publish Hour & Views") +
+  geom_point(aes(col = category_id)) +
+  theme_minimal()
+```
+
+
+# **4. DATA ANALYSIS**
+Based on the exploration of the data above, we can perform the following analysis:  
+**1.** The `Music` category has the highest engagement. The `Music` category has the highest likes per view compared to other categories. It can be seen from the median value.  
+Of the three categories, `Music` has the highest comment per view component compared to other categories. It can be seen from the size jitter.  
+**2.** Top 10 trending youtube channels have video titles freq greater than the overall trending average.  
+**3.** "The `Entertainment` category has the highest number of videos for the proportion of each time period (Day/Night) when the video is published a lot.  
+**4.**
+The `Music` category has the most average views at prime time.  
+
+**Conclusion**
+From the four analyzes above, the `Music` category is the most recommended category for new YouTubers as a channel category to be created. Likewise for active YouTubers, you can add a `Music` category to your YouTube channel to increase likes and views on the channel.
